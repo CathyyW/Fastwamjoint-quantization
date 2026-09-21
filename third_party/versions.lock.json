@@ -1,0 +1,10 @@
+{
+  "cutlass": {
+    "url": "https://github.com/NVIDIA/cutlass.git",
+    "commit": "da5e086dab31d63815acafdac9a9c5893b1c69e2"
+  },
+  "fast-hadamard-transform": {
+    "url": "https://github.com/Dao-AILab/fast-hadamard-transform.git",
+    "commit": "e7706faf8d1c3b9f241e36860640ad1dac644ede"
+  }
+}

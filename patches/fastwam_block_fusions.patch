@@ -1,0 +1,68 @@
+diff --git a/src/fastwam/models/wan22/mot.py b/src/fastwam/models/wan22/mot.py
+index faa745b..54fd3ba 100644
+--- a/src/fastwam/models/wan22/mot.py
++++ b/src/fastwam/models/wan22/mot.py
+@@ -113,7 +113,10 @@ class MoT(nn.Module):
+         gate_mlp: torch.Tensor,
+         context_payload: Optional[dict],
+     ) -> torch.Tensor:
+-        x = block.gate(residual_x, gate_msa, block.self_attn.o(mixed_attn_out))
++        if not block.training and getattr(block.self_attn.o, "supports_fused_gate_residual", False):
++            x = block.self_attn.o.forward_gate_residual(mixed_attn_out, residual_x, gate_msa)
++        else:
++            x = block.gate(residual_x, gate_msa, block.self_attn.o(mixed_attn_out))
+ 
+         if context_payload is not None:
+             context = context_payload.get("context")
+@@ -123,8 +126,21 @@ class MoT(nn.Module):
+                     context_mask = context_mask.unsqueeze(1)
+                 x = x + block.cross_attn(block.norm3(x), context, ctx_mask=context_mask)
+ 
+-        mlp_input = modulate(block.norm2(x), shift_mlp, scale_mlp)
+-        x = block.gate(x, gate_mlp, block.ffn(mlp_input))
++        fused_adaln = not block.training and getattr(block.ffn[0], "supports_fused_adaln", False)
++        fused_gate = not block.training and getattr(block.ffn[2], "supports_fused_gate_residual", False)
++        if fused_adaln or fused_gate:
++            if fused_adaln:
++                hidden = block.ffn[0].forward_adaln(x, scale_mlp, shift_mlp, block.norm2.eps)
++            else:
++                hidden = block.ffn[0](modulate(block.norm2(x), shift_mlp, scale_mlp))
++            projected_input = block.ffn[1](hidden)
++            x = (
++                block.ffn[2].forward_gate_residual(projected_input, x, gate_mlp)
++                if fused_gate else block.gate(x, gate_mlp, block.ffn[2](projected_input))
++            )
++        else:
++            mlp_input = modulate(block.norm2(x), shift_mlp, scale_mlp)
++            x = block.gate(x, gate_mlp, block.ffn(mlp_input))
+         return x
+ 
+     @staticmethod
+@@ -139,12 +155,27 @@ class MoT(nn.Module):
+         context: torch.Tensor,
+         context_mask: torch.Tensor,
+     ) -> torch.Tensor:
+-        x = block.gate(residual_x, gate_msa, block.self_attn.o(mixed_attn_out))
++        if not block.training and getattr(block.self_attn.o, "supports_fused_gate_residual", False):
++            x = block.self_attn.o.forward_gate_residual(mixed_attn_out, residual_x, gate_msa)
++        else:
++            x = block.gate(residual_x, gate_msa, block.self_attn.o(mixed_attn_out))
+         x = x + block.cross_attn(
+             block.norm3(x),
+             context,
+             ctx_mask=context_mask.unsqueeze(1),
+         )
++        fused_adaln = not block.training and getattr(block.ffn[0], "supports_fused_adaln", False)
++        fused_gate = not block.training and getattr(block.ffn[2], "supports_fused_gate_residual", False)
++        if fused_adaln or fused_gate:
++            if fused_adaln:
++                hidden = block.ffn[0].forward_adaln(x, scale_mlp, shift_mlp, block.norm2.eps)
++            else:
++                hidden = block.ffn[0](modulate(block.norm2(x), shift_mlp, scale_mlp))
++            projected_input = block.ffn[1](hidden)
++            return (
++                block.ffn[2].forward_gate_residual(projected_input, x, gate_mlp)
++                if fused_gate else block.gate(x, gate_mlp, block.ffn[2](projected_input))
++            )
+         mlp_input = modulate(block.norm2(x), shift_mlp, scale_mlp)
+         return block.gate(x, gate_mlp, block.ffn(mlp_input))

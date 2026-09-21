@@ -1,0 +1,30 @@
+{
+  "adapter": "robot_bridge:make_adapter",
+  "num_calls": 10,
+  "sigma_shift": null,
+  "expected_sites": 600,
+  "stream_config": {
+    "video_latent_frames": 3,
+    "action_chunks": 2,
+    "proprio_tokens": 1,
+    "split_context": true
+  },
+  "assets": {
+    "source_checkpoint": "/replace/on/robot/server/fastwamjoint.pt",
+    "training_config": "/replace/on/robot/server/training_config.yaml",
+    "dataset_stats": "/replace/on/robot/server/dataset_stats.json"
+  },
+  "model": {
+    "dtype": "bfloat16",
+    "action_horizon": 32,
+    "num_video_frames": 9
+  },
+  "dataset": {
+    "root": "/replace/on/robot/server/training_dataset",
+    "split": "train",
+    "sampling_seed": 42
+  },
+  "provenance": {
+    "note": "EXAMPLE ONLY: replace with actual training/deployment settings; list immutable file assets above."
+  }
+}
