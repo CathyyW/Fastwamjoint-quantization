@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from fastwam_steerquant.adapters import read_config, config_identity
+from fastwam_steerquant.adapters import read_config, config_identity, load_adapter
 from fastwam_steerquant.adapters.observations import write_json, load_observation_records
 from fastwam_steerquant.recovery import file_identity
 
@@ -35,6 +35,12 @@ def main():
             args.d_epochs, args.gamma_epochs, args.recycle_every) < 0:
         p.error("Invalid calibration budget")
     config = read_config(args.config)
+    if config.get("provenance", {}).get("formal_calibration_approved") is False:
+        raise ValueError("Experimental inputs are approved for smoke tests only; formal calibration needs review.")
+    adapter = load_adapter(config)
+    readiness = getattr(adapter, "require_calibration_ready", None)
+    if callable(readiness):
+        readiness()
     records = load_observation_records(args.observations)
     identity = {"config": config_identity(config), "observations": file_identity(args.observations),
                 "settings": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()

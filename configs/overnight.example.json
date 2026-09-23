@@ -1,0 +1,66 @@
+{
+  "output_dir": "../outputs/overnight",
+  "gpu": 0,
+  "poll_seconds": 30,
+  "download_timeout_hours": 24,
+  "download_idle_minutes": 30,
+  "stage_timeout_hours": 12,
+  "disk_gib": {
+    "small": 5,
+    "calibration": 40,
+    "export": 16,
+    "reserve": 3
+  },
+  "tasks": [
+    {
+      "name": "pack",
+      "config": "../local/real_pack.json"
+    },
+    {
+      "name": "stack",
+      "config": "../local/real_stack.json"
+    }
+  ],
+  "downloads": [
+    {
+      "path": "/root/autodl-tmp/fastwam/joint_pack/step_015000.pt",
+      "bytes": 12041813397,
+      "sha256": "2b5da8ac40a2701f65f1f72cd613713047271deafbd2da929b3ed8ab75b17a49"
+    },
+    {
+      "path": "/root/autodl-tmp/fastwam/joint_stack/step_015000.pt",
+      "bytes": 12041813397,
+      "sha256": "a86b2223d4b0f1fcb079532a5a2898a5ab9f529da3143994721cdaa32d29fc9f"
+    },
+    {
+      "path": "/root/autodl-tmp/datasets/real_robot_calibration_subset/pack_3_objects_plus/perfect/episode_0.hdf5",
+      "bytes": 2472130624,
+      "sha256": "c0c1dad8280a0853b2dcb4d4b31b0e9fc2ba0574781266a2a74e3f49881e744b"
+    },
+    {
+      "path": "/root/autodl-tmp/datasets/real_robot_calibration_subset/pack_3_objects_plus/perfect/episode_35.hdf5",
+      "bytes": 2386414632,
+      "sha256": "47e8efee2dbf5ec1517fb63c4b1927ae8623620e0d8cc07c874ee3a147f66288"
+    },
+    {
+      "path": "/root/autodl-tmp/datasets/real_robot_calibration_subset/pack_3_objects_plus/perfect/episode_70.hdf5",
+      "bytes": 2275802384,
+      "sha256": "9d2257a2d9479ffe5e784d07d80d5c7c1d967eec0248214c02e8e3c1b82da67e"
+    },
+    {
+      "path": "/root/autodl-tmp/datasets/real_robot_calibration_subset/stack_3_cups_gen/perfect/episode_0.hdf5",
+      "bytes": 1529188904,
+      "sha256": "ac4ca1cce407e21b86abc69a13e832edb51b72d704fc35355b1357c0210846c5"
+    },
+    {
+      "path": "/root/autodl-tmp/datasets/real_robot_calibration_subset/stack_3_cups_gen/perfect/episode_35.hdf5",
+      "bytes": 1775298688,
+      "sha256": "e4d377a1d89e211129d8e084d2be128a6fe6bd50c2f9812f3dd3dd61f4168d18"
+    },
+    {
+      "path": "/root/autodl-tmp/datasets/real_robot_calibration_subset/stack_3_cups_gen/perfect/episode_70.hdf5",
+      "bytes": 1780828752,
+      "sha256": "16e3f1d373a39b43d30ab607391a868c4acbd3e7b5d9c952009a92d8796955c1"
+    }
+  ]
+}

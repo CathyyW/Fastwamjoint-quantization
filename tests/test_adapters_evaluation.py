@@ -65,6 +65,7 @@ def test_pipeline_propagates_rht_and_resume_guards(tmp_path, monkeypatch):
     config = {"num_calls": 2, "expected_sites": 20}
     monkeypatch.setattr(pipeline, "read_config", lambda _: config)
     monkeypatch.setattr(pipeline, "config_identity", lambda _: {"fixture": 1})
+    monkeypatch.setattr(pipeline, "load_adapter", lambda _: SimpleNamespace())
     observations = save_observation_records([{"observation_id":"a","sample_index":0}], tmp_path / "obs.pt")
     monkeypatch.setattr(sys, "argv", ["calibrate", "--config", str(tmp_path / "config.json"),
         "--observations", str(observations), "--output-dir", str(tmp_path / "run"),

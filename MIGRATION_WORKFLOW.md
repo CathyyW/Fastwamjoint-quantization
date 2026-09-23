@@ -1,6 +1,11 @@
 # FastWAM SteerQuant：真机服务器迁移与实验 workflow
 
-本文件是接续实施说明。新服务器 pull 后，从第 1 步开始执行。
+本文件是通用接续实施说明。pack/stack 真机任务请先阅读
+[真实任务离线校准 workflow](docs/REAL_ROBOT_CALIBRATION_WORKFLOW.md)：
+现已基于交接源码补上专用 adapter、可微核心和纯 CPU 结构构建，
+使用 `--construct-device cpu`；资产确认、正式校准与目标端 RPC 接线尚待完成。
+下载完成后串行自动执行的入口见 [夜间监管说明](docs/OVERNIGHT_CALIBRATION.md)，默认仅检查，需显式启动。
+新服务器 pull 后，通用环境配置从第 1 步开始执行。
 本地已迁移方法核心和两个 CUDA kernel，并实现通用校准入口、完整部署导出、
 直接 packed INT4 加载和评测工具。真机训练配置、数据 processor、模型无权重构建
 以及机器人控制循环，需要在目标服务器接入已有真机代码。

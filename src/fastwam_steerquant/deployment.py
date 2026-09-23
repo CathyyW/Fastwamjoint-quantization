@@ -27,6 +27,26 @@ def _cpu(tensor):
     return tensor.detach().cpu().contiguous()
 
 
+def _target_aliases(model, names):
+    """Find every registered path to each target, including MoT/dit aliases."""
+    by_id = {}
+    for name in names:
+        key = id(resolve_site_module(model, name))
+        if key in by_id:
+            raise ValueError("Distinct calibration sites share one Linear; unsupported tying.")
+        by_id[key] = name
+    aliases = {name: [] for name in names}
+    for path, module in model.named_modules(remove_duplicate=False):
+        if id(module) in by_id:
+            aliases[by_id[id(module)]].append(path)
+    return {name: sorted(paths) for name, paths in aliases.items()}
+
+
+def _spec_aliases(spec):
+    # Old v1 files without aliases remain valid for non-aliased builders only.
+    return spec.get("aliases", [spec["module_name"]])
+
+
 def export_deployment(model: nn.Module, checkpoint: QuantizationCheckpoint, path: str | Path,
                       *, model_config: dict, provenance: dict | None = None) -> Path:
     """Export from the ORIGINAL model, not a rotated or already replaced model.
@@ -44,7 +64,9 @@ def export_deployment(model: nn.Module, checkpoint: QuantizationCheckpoint, path
         raise ValueError("Export requires the original, unrotated model.")
     # JSON metadata cannot serialize arbitrary Python objects or execute code on load.
     metadata = json.loads(json.dumps({"model_config": model_config, "provenance": provenance or {}}))
-    excluded = {s.module_name + "." + name for s in checkpoint.sites for name in ("weight", "bias")}
+    aliases = _target_aliases(model, [s.module_name for s in checkpoint.sites])
+    excluded = {alias + "." + name for paths in aliases.values()
+                for alias in paths for name in ("weight", "bias")}
     state = {name: _cpu(value) for name, value in model.state_dict().items() if name not in excluded}
     specs = []
     for entry in checkpoint.sites:
@@ -57,7 +79,8 @@ def export_deployment(model: nn.Module, checkpoint: QuantizationCheckpoint, path
             raise ValueError(f"Unsupported native shape {entry.module_name}: N={n}, K={k}")
         if entry.rotation != "none" and checkpoint.activation_bits != 4:
             raise ValueError("RHT requires W4A4.")
-        spec = {"module_name": entry.module_name, "site_index": entry.site_index,
+        spec = {"module_name": entry.module_name, "aliases": aliases[entry.module_name],
+                "site_index": entry.site_index,
                 "expert": entry.expert, "operation": entry.operation,
                 "stream_names": list(entry.stream_names), "rotation": entry.rotation,
                 "in_features": k, "out_features": n, "has_bias": source.bias is not None}
@@ -69,7 +92,11 @@ def export_deployment(model: nn.Module, checkpoint: QuantizationCheckpoint, path
                   "bias": source.bias, "input_rotation_signs": entry.input_rotation_signs}
         for name, value in values.items():
             if value is not None:
-                state[entry.module_name + "." + name] = _cpu(value)
+                # Reuse the exact tensor, so torch.save writes one storage even
+                # though strict state_dict loading needs every registered path.
+                packed_value = _cpu(value)
+                for alias in aliases[entry.module_name]:
+                    state[alias + "." + name] = packed_value
         specs.append(spec)
     # Include registered nonpersistent buffers (e.g. positional caches) so meta
     # construction does not leave an uninitialized buffer at model.to(device).
@@ -102,7 +129,15 @@ def validate_payload(payload: dict) -> None:
     if len(set(names)) != len(names):
         raise ValueError("Duplicate deployment sites.")
     state = payload["state_dict"]
+    seen_aliases = set()
     for spec in payload["sites"]:
+        aliases = _spec_aliases(spec)
+        if (not isinstance(aliases, list) or not aliases
+                or any(not isinstance(a, str) or not a or any(not p for p in a.split(".")) for a in aliases)
+                or len(set(aliases)) != len(aliases) or spec["module_name"] not in aliases
+                or seen_aliases.intersection(aliases)):
+            raise ValueError("Invalid or overlapping deployment aliases.")
+        seen_aliases.update(aliases)
         prefix = spec["module_name"] + "."
         n, k, streams = spec["out_features"], spec["in_features"], len(spec["stream_names"])
         if k <= 0 or n <= 0 or k % (256 if bits == 4 else 32) or n % 8 or streams < 1:
@@ -130,6 +165,16 @@ def validate_payload(payload: dict) -> None:
         if signs is not None and (signs.shape != (k,) or signs.dtype != torch.float32
                                   or not torch.all(signs.abs() == 1)):
             raise ValueError("Invalid RHT signs.")
+        for alias in aliases:
+            for name in BUFFERS:
+                reference = state.get(prefix + name)
+                value = state.get(alias + "." + name)
+                if value is reference:
+                    continue
+                if (not isinstance(value, torch.Tensor) or not isinstance(reference, torch.Tensor)
+                        or value.dtype != reference.dtype or value.shape != reference.shape
+                        or not torch.equal(value, reference)):
+                    raise ValueError(f"Conflicting or missing deployment alias buffer: {alias}.{name}")
 
 
 def load_deployment(path: str | Path, build_model: Callable, *, device="cuda",
@@ -150,6 +195,10 @@ def load_deployment(path: str | Path, build_model: Callable, *, device="cuda",
     existing = enumerate_fastwamjoint_linears(model)
     if {s.module_name for s in existing} != {s["module_name"] for s in payload["sites"]}:
         raise ValueError("Deployment/model topology mismatch.")
+    aliases = _target_aliases(model, [s.module_name for s in existing])
+    for spec in payload["sites"]:
+        if aliases[spec["module_name"]] != sorted(_spec_aliases(spec)):
+            raise ValueError(f"Builder alias topology differs at {spec['module_name']}")
     state = DenoiseCallState(payload["num_calls"])
     streams = FastWAMStreamConfig(**payload["stream_config"])
     for spec in payload["sites"]:
@@ -158,9 +207,11 @@ def load_deployment(path: str | Path, build_model: Callable, *, device="cuda",
                 spec["in_features"], spec["out_features"], spec["has_bias"]):
             raise ValueError(f"Builder shape/bias differs at {spec['module_name']}")
         values = {name: payload["state_dict"].get(spec["module_name"] + "." + name) for name in BUFFERS}
-        parent, child = resolve_site_parent(model, spec["module_name"])
-        setattr(parent, child, WAMQuantLinear.from_packed(spec, values, state=state,
-                stream_config=streams, activation_bits=payload["activation_bits"]))
+        replacement = WAMQuantLinear.from_packed(spec, values, state=state,
+                stream_config=streams, activation_bits=payload["activation_bits"])
+        for alias in _spec_aliases(spec):
+            parent, child = resolve_site_parent(model, alias)
+            setattr(parent, child, replacement)
     model.load_state_dict(payload["state_dict"], strict=True, assign=True)
     for name, value in payload["nonpersistent_buffers"].items():
         prefix, _, child = name.rpartition(".")

@@ -80,4 +80,4 @@ def resolve_site_module(model: nn.Module, module_name: str) -> nn.Module:
 
 def resolve_site_parent(model: nn.Module, module_name: str) -> tuple[nn.Module, str]:
     parent_name, _, child_name = module_name.rpartition(".")
-    return _resolve(model, parent_name), child_name
+    return (_resolve(model, parent_name) if parent_name else model), child_name

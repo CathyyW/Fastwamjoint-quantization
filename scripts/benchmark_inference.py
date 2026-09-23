@@ -41,7 +41,10 @@ def main():
     if args.deployment:
         policy = QuantizedPolicy(args.deployment, adapter, device=device,
                                  construct_device=args.construct_device, cuda_graph=args.cuda_graph)
-        if policy.metadata["model_config"] != config:
+        validator = getattr(adapter, "validate_deployment_config", None)
+        if callable(validator):
+            validator(policy.metadata["model_config"])
+        elif policy.metadata["model_config"] != config:
             raise ValueError("Benchmark config differs from exported deployment config.")
         call = lambda record, seed: policy.infer(record, seed=seed)
         mode = f"w4a{policy.metadata['activation_bits']}"

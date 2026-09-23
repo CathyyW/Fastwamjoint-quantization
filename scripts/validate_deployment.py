@@ -69,7 +69,10 @@ def main():
     if args.stage == "direct":
         policy = QuantizedPolicy(args.deployment, adapter, construct_device=args.construct_device,
                                  cuda_graph=args.cuda_graph)
-        if policy.metadata["model_config"] != config:
+        validator = getattr(adapter, "validate_deployment_config", None)
+        if callable(validator):
+            validator(policy.metadata["model_config"])
+        elif policy.metadata["model_config"] != config:
             raise ValueError("Validation config differs from deployment.")
         infer = policy.infer
     else:
