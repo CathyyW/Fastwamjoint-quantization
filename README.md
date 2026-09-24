@@ -7,6 +7,11 @@ Start with **[MIGRATION_WORKFLOW.md](MIGRATION_WORKFLOW.md)** on the robot serve
 It lists the implemented interfaces, outstanding robot-specific work, commands,
 validation gates, and how to measure SR and speedup.
 
+For the pack/stack real-robot **W4A8** server, use the tracked
+[`real_robot_w4a8_runtime.json`](configs/real_robot_w4a8_runtime.json) profile:
+tile64, CUDA Graph on, extra block fusion off. See
+[server integration and no-action checks](docs/REAL_ROBOT_W4A8_RUNTIME.md).
+
 ```bash
 python -m pip install -e '.[test]'
 python -m pytest

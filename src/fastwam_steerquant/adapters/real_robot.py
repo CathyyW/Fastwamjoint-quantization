@@ -186,6 +186,10 @@ class RealRobotAdapter:
         model.video_expert.freqs = tuple(x.to(device=device) for x in model.video_expert.freqs)
         model.action_expert.freqs = model.action_expert.freqs.to(device=device)
 
+    def enable_block_fusion_dispatch(self, model):
+        from .robot_fusion import install_robot_block_fusion_dispatch
+        install_robot_block_fusion_dispatch(model)
+
     def infer_kwargs(self, model, record, *, seed):
         import numpy as np
         if record.get("task") != self.task["task"] or record.get("prompt") != self.task["prompt"]:

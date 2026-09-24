@@ -178,11 +178,16 @@ from fastwam_steerquant.policy import QuantizedPolicy
 
 adapter = load_adapter("local/real_pack.json")
 policy = QuantizedPolicy("/path/to/deployment.pt", adapter,
-                         device="cuda:0", construct_device="cpu", cuda_graph=False)
+                         device="cuda:0",
+                         runtime_profile="configs/real_robot_w4a8_runtime.json")
 # record: task、prompt、images[三相机RGB uint8 HWC]、state[14维物理量]
 # result = policy.infer(record, seed=42)
 # actions = adapter.denormalize_actions(result["action"])  # [32,14]，仅反归一化一次
 ```
+
+上面的runtime profile仅适用于pack/stack **W4A8**：tile64、CPU结构构建、CUDA Graph、额外block fusion关闭。
+W4A4-RHT不能使用该配置。源checkpoint与校准参数不变。启动包装与验收见
+[REAL_ROBOT_W4A8_RUNTIME.md](REAL_ROBOT_W4A8_RUNTIME.md)。
 
 目标机的 `serve_policy.py` / RTC 协议接线仍需在那边完成，当前不是可直接替换原启动命令的 ROS 服务。
 建议隔离量化推理进程，避免已导入的另一份 `qi` 与交接源码冲突；保留原 RPC schema、执行节奏、

@@ -352,6 +352,10 @@ warmup/capture 总时间、加载峰值、稳定 allocated/reserved 峰值分别
 
 ## 9. 接入已有真机控制循环并测 SR
 
+pack/stack W4A8 的当前真机运行配置是 **tile64 + CUDA Graph + 关闭额外 block fusion**。
+使用可提交的 `configs/real_robot_w4a8_runtime.json`，启动方法及无动作验收见
+[REAL_ROBOT_W4A8_RUNTIME.md](docs/REAL_ROBOT_W4A8_RUNTIME.md)。不要只pull后沿用未读取新配置的旧入口。
+
 在已有控制程序中创建一次 policy，重复复用；不在每个 action chunk 重载模型：
 
 ```python
@@ -362,7 +366,7 @@ from fastwam_steerquant.evaluation import TrialRecorder
 adapter = load_adapter("local/real_robot.json")
 policy = QuantizedPolicy(
     "outputs/real/w4a8/deployment.pt", adapter,
-    device="cuda:0", construct_device="meta", cuda_graph=False,
+    device="cuda:0", runtime_profile="configs/real_robot_w4a8_runtime.json",
 )
 recorder = TrialRecorder(
     "outputs/real/w4a8_trials.jsonl", mode="w4a8",
@@ -395,6 +399,13 @@ SR = successes / trials，并保留次数。机器人观测/通信/动作执行�
 不要把模型延迟的 speedup 直接称为整任务完成时间 speedup。
 
 ## 10. 可选 block 融合补丁
+
+2026-09-24 真机 `RealRobotAdapter` 已提供不修改源快照的实例级融合调用适配：
+`QuantizedPolicy(..., cuda_graph=True, fuse_block=True)`。仅对已验证支持的非旋转
+native 模型显式开启，必须在 Graph 捕获之前设置，并复核完整 action 偏差。
+正式仿真 rollout 的对齐配置是 `cuda_graph=True, fuse_block=False`；额外融合是
+独立性能实验，不应混称为原正式 SR 配置。历史证据、限制和对齐测试见
+[PERFORMANCE_ALIGNMENT.md](docs/PERFORMANCE_ALIGNMENT.md)。已有 deployment.pt 无需重新导出。
 
 `patches/fastwam_block_fusions.patch` 保存原工作区 FastWAM `mot.py` 的现有融合调用差异。
 先在目标 FastWAM 仓库检查：

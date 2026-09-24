@@ -58,3 +58,58 @@ def test_policy_rejects_mismatched_geometry_and_reentrant_calls(monkeypatch):
             policy.infer({})
     finally:
         policy._lock.release()
+
+
+def test_policy_fusion_installed_before_graph_and_rht_rejected(monkeypatch):
+    model = FakeModel()
+    metadata = {"sites": [{"rotation": "none", "operation": name}
+                          for name in ("ffn.0", "ffn.2", "self_attn.o")]}
+    monkeypatch.setattr(policy_module, 'load_deployment',
+                        lambda *a, **kw: (model, DenoiseCallState(2), metadata))
+    events = []
+    adapter = SimpleNamespace(build_model=lambda *a, **kw: model,
+                              enable_block_fusion_dispatch=lambda m: events.append('dispatch'))
+    def enable(m, flag):
+        assert flag
+        events.append('fusion')
+        return 3
+    monkeypatch.setattr(policy_module, 'set_wam_block_fusions', enable)
+    monkeypatch.setattr(policy_module, 'LiveJointDiTGraph',
+                        lambda *a, **kw: SimpleNamespace(install=lambda: events.append('graph')))
+    policy = policy_module.QuantizedPolicy('fixture', adapter, fuse_block=True, cuda_graph=True)
+    assert policy.fused_modules == 3 and events == ['dispatch', 'fusion', 'graph']
+    events.clear()
+    metadata['sites'][0]['rotation'] = 'rht'
+    with pytest.raises(ValueError, match='RHT block fusion'):
+        policy_module.QuantizedPolicy('fixture', adapter, fuse_block=True)
+    assert not events
+
+
+def test_policy_consumes_profile_before_loading_and_installs_graph_without_fusion(monkeypatch):
+    from pathlib import Path
+    from fastwam_steerquant import runtime_profile as rp
+    from fastwam_steerquant.kernels.w4a8 import loader
+    import os
+    for name in ('FASTWAM_RUNTIME_PROFILE', 'FASTWAM_W4A8_TILE', 'FASTWAM_W4A8_EXPERIMENTAL_SMALL_TILE'):
+        monkeypatch.setenv(name, '')
+        monkeypatch.delenv(name)
+    monkeypatch.setattr(rp, '_configured_tile', None)
+    monkeypatch.setattr(loader, 'load_extension', SimpleNamespace(cache_info=lambda: SimpleNamespace(currsize=0)))
+    events = []
+    model = FakeModel()
+    metadata = dict(weight_bits=4, activation_bits=8, sites=[dict(rotation='none')])
+    def load(*args, **kw):
+        assert os.environ['FASTWAM_W4A8_TILE'] == '64'
+        assert kw['construct_device'] == 'cpu'
+        events.append('load')
+        return model, DenoiseCallState(2), metadata
+    monkeypatch.setattr(policy_module, 'load_deployment', load)
+    monkeypatch.setattr(policy_module, 'set_wam_block_fusions', lambda m, v: events.append(('fusion', v)))
+    monkeypatch.setattr(policy_module, 'LiveJointDiTGraph',
+                        lambda *a, **kw: SimpleNamespace(install=lambda: events.append('graph')))
+    adapter = SimpleNamespace(build_model=lambda *a, **kw: model)
+    policy = policy_module.QuantizedPolicy('fixture', adapter,
+        runtime_profile=Path(__file__).resolve().parents[1]/'configs/real_robot_w4a8_runtime.json')
+    assert events == ['load', ('fusion', False), 'graph']
+    assert policy.runtime_settings['cuda_graph'] is True
+    assert policy.runtime_settings['fuse_block'] is False and policy.fused_modules == 0

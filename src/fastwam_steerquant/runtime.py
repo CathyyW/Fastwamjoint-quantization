@@ -207,6 +207,8 @@ class WAMQuantLinear(nn.Module):
 
 def set_wam_block_fusions(model: nn.Module, enabled: bool) -> int:
     """Toggle only the 3 supported WAM operations per FastWAM expert block."""
+    if getattr(model, "_rollout_graph", None) is not None:
+        raise RuntimeError("Cannot change block fusion after CUDA Graph installation.")
     if enabled and any(isinstance(m, WAMQuantLinear) and m.rotation != "none" for m in model.modules()):
         raise ValueError("Rotated FastWAM block fusion is not validated.")
     count = 0

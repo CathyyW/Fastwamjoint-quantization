@@ -86,6 +86,17 @@ def test_dense_core_matches_unmodified_upstream_and_supports_vjp(tiny_model):
     assert all(torch.isfinite(g).all() and torch.count_nonzero(g) for g in grads)
 
 
+def test_opt_in_post_block_dispatch_matches_audited_dense_handoff(tiny_model):
+    from fastwam_steerquant.adapters.robot_fusion import install_robot_block_fusion_dispatch
+    data = inputs()
+    with torch.inference_mode():
+        expected = tiny_model._predict_joint_noise(**data)
+        install_robot_block_fusion_dispatch(tiny_model)
+        actual = tiny_model._predict_joint_noise(**data)
+    for left, right in zip(actual, expected):
+        torch.testing.assert_close(left, right, rtol=0, atol=0)
+
+
 def test_three_step_differentiable_rollout_matches_upstream(tiny_model):
     from qi.models.wan22.fastwam import FastWAM
     data = inputs()

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "real_robot_w4a8_graph_tile64_no_block_fusion",
+  "weight_bits": 4,
+  "activation_bits": 8,
+  "rotation": "none",
+  "construct_device": "cpu",
+  "cuda_graph": true,
+  "fuse_block": false,
+  "w4a8_tile": 64
+}
