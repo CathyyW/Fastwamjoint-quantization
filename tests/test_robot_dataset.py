@@ -55,6 +55,28 @@ def test_as_stored_requires_approval_and_never_swaps_channels(selected):
     assert (record["images"]["cam_high"][..., 2] == 0).all()
 
 
+def test_explicit_counts_override_default_and_exclusion_is_preflight(selected):
+    config, manifest, path = selected
+    config["dataset"]["per_episode_counts"] = [3, 2, 2]
+    for ep, count in zip(manifest["episodes"], [3, 2, 2]):
+        ep["frames"] = ep["frames"][:count]
+    path.write_text(json.dumps(manifest))
+    assert len(list(records_from_manifest(config))) == 7
+    last = manifest["episodes"][-1]
+    manifest["excluded_observation_ids"] = [f"pack:{last['sha256']}:1"]
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="excluded"):
+        next(records_from_manifest(config))
+
+
+@pytest.mark.parametrize("counts", [[25,25], [25,25,0], [True,25,25], "75"])
+def test_invalid_explicit_counts(selected, counts):
+    config, _, _ = selected
+    config["dataset"]["per_episode_counts"] = counts
+    with pytest.raises(ValueError, match="per_episode_counts"):
+        next(records_from_manifest(config))
+
+
 @pytest.mark.parametrize("damage", ["split", "color", "hash", "frame", "duplicate"])
 def test_invalid_sampling_manifest_rejected_before_first_record(selected, damage):
     config, manifest, path = selected

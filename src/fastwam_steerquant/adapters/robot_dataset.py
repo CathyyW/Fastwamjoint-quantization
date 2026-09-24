@@ -28,8 +28,16 @@ def records_from_manifest(config):
     if color == "as_stored" and config.get("dataset", {}).get("channel_policy") != "as_stored":
         raise ValueError("as_stored requires explicit dataset.channel_policy approval.")
     episodes = manifest["episodes"]
-    if len(episodes) != 3 or [len(e["frames"]) for e in episodes] != [9, 8, 8]:
-        raise ValueError("This experiment requires 3 episodes with 9+8+8 explicit frame selections.")
+    counts = config.get("dataset", {}).get("per_episode_counts", [9, 8, 8])
+    if (not isinstance(counts, list) or len(counts) != 3
+            or any(type(n) is not int or n <= 0 for n in counts)):
+        raise ValueError("per_episode_counts must contain three positive integers.")
+    if len(episodes) != 3 or [len(e["frames"]) for e in episodes] != counts:
+        raise ValueError(f"This experiment requires 3 episodes with explicit frame counts {counts}.")
+    excluded = manifest.get("excluded_observation_ids", [])
+    if not isinstance(excluded, list) or any(not isinstance(x, str) for x in excluded):
+        raise ValueError("excluded_observation_ids must be a list of strings.")
+    excluded = set(excluded)
     seen_paths, seen_hashes = set(), set()
     resolved = []
     # Complete integrity/selection checks before yielding any record.
@@ -44,6 +52,8 @@ def records_from_manifest(config):
         indices = [frame["index"] for frame in frames]
         if any(type(i) is not int or i < 0 for i in indices) or indices != sorted(set(indices)):
             raise ValueError("Frame indices must be unique, sorted, nonnegative integers.")
+        if any(f"{task['task']}:{episode['sha256']}:{i}" in excluded for i in indices):
+            raise ValueError("Selected frame overlaps excluded evaluation observations.")
         if any(not isinstance(f.get("stage"), str) or not f["stage"].strip() for f in frames):
             raise ValueError("Each frame needs a reviewed task-stage label.")
         with h5py.File(source, "r") as file:
